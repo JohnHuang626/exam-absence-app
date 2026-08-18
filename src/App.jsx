@@ -160,6 +160,7 @@ export default function App() {
     }
   };
 
+  const [teacherName, setTeacherName] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedStudents, setSelectedStudents] = useState([]);
@@ -176,6 +177,7 @@ export default function App() {
   };
 
   const handleSubmitAbsence = () => {
+    if (!teacherName.trim()) return showToast('請輸入監考老師姓名！', 'error');
     if (!selectedClass || !selectedSubject) return showToast('請選擇班級與科目！', 'error');
     if (selectedStudents.length === 0) {
       showModal({
@@ -196,6 +198,7 @@ export default function App() {
     const newRecord = {
       timestamp: new Date().toLocaleString('zh-TW', { hour12: false }),
       timestampMs: Date.now(),
+      teacher: teacherName.trim(),
       className: className,
       subject: selectedSubject,
       students: studentsList,
@@ -205,6 +208,7 @@ export default function App() {
       const absencesRef = collection(db, 'artifacts', appId, 'public', 'data', 'absences');
       await addDoc(absencesRef, newRecord);
       showToast('缺考名單已成功送出！');
+      setTeacherName('');
       setSelectedClass('');
       setSelectedSubject('');
       setSelectedStudents([]);
@@ -262,10 +266,11 @@ export default function App() {
   const handleExportCSV = () => {
     if (absences.length === 0) return showToast('目前沒有任何紀錄可匯出', 'error');
     const BOM = '\uFEFF';
-    const headers = ['時間', '班級', '科目', '狀態/缺考名單'];
+    const headers = ['時間', '監考老師', '班級', '科目', '狀態/缺考名單'];
     const csvRows = absences.map(record => {
       const status = record.students.length === 0 ? '全勤' : record.students.join('、');
-      return `"${record.timestamp}","${record.className}","${record.subject}","${status}"`;
+      const teacher = record.teacher || '未填寫';
+      return `"${record.timestamp}","${teacher}","${record.className}","${record.subject}","${status}"`;
     });
     const blob = new Blob([BOM + headers.join(',') + '\n' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -386,7 +391,11 @@ export default function App() {
                   選擇考試資訊
                 </h2>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">監考老師</label>
+                    <input type="text" value={teacherName} onChange={(e) => setTeacherName(e.target.value)} placeholder="請輸入姓名" className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all bg-slate-50 hover:bg-white" />
+                  </div>
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">考試班級</label>
                     <select value={selectedClass} onChange={handleClassChange} className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all appearance-none bg-slate-50 hover:bg-white">
@@ -485,6 +494,7 @@ export default function App() {
                         <thead>
                           <tr className="bg-slate-50 text-slate-600 text-sm">
                             <th className="p-4 font-semibold border-b">時間</th>
+                            <th className="p-4 font-semibold border-b">老師</th>
                             <th className="p-4 font-semibold border-b">班級</th>
                             <th className="p-4 font-semibold border-b">科目</th>
                             <th className="p-4 font-semibold border-b">狀態 / 缺考名單</th>
@@ -494,6 +504,7 @@ export default function App() {
                           {absences.map((record) => (
                             <tr key={record.id} className="hover:bg-slate-50/50 transition-colors">
                               <td className="p-4 text-sm text-slate-500 whitespace-nowrap">{record.timestamp}</td>
+                              <td className="p-4 font-medium text-slate-700 whitespace-nowrap">{record.teacher || '未填寫'}</td>
                               <td className="p-4 font-medium text-slate-800 whitespace-nowrap">{record.className}</td>
                               <td className="p-4 text-indigo-600 font-medium whitespace-nowrap">{record.subject}</td>
                               <td className="p-4">
