@@ -360,7 +360,11 @@ export default function App() {
 
       <header className="bg-indigo-600 text-white shadow-md sticky top-0 z-40 print:hidden">
         <div className="max-w-5xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <div className="flex items-center gap-2">
+          <div 
+            className="flex items-center gap-2 cursor-pointer hover:text-indigo-200 transition-colors"
+            onClick={() => window.location.reload()}
+            title="回到首頁並重新整理"
+          >
             <ClipboardList size={28} />
             <h1 className="text-xl sm:text-2xl font-bold tracking-wider">缺考登記系統</h1>
           </div>
@@ -585,5 +589,4 @@ export default function App() {
       </main>
     </div>
   );
-  
 }
