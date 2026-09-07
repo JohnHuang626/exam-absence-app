@@ -296,17 +296,15 @@ export default function App() {
       try {
         const data = new Uint8Array(evt.target.result);
         const wb = window.XLSX.read(data, { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const jsonData = window.XLSX.utils.sheet_to_json(ws, { header: 1 });
-        const newClassesMap = new Map();
-        
-        let classIdx = 0, nameIdx = 1;
+        let classIdx = 0, nameIdx = 1, seatIdx = -1;
         if (jsonData.length > 0) {
           const headers = jsonData[0].map(h => String(h || '').trim());
           const foundClassIdx = headers.findIndex(h => h.includes('班級') || h.includes('班') || h.includes('Class'));
           const foundNameIdx = headers.findIndex(h => h.includes('姓名') || h.includes('名') || h.includes('Name'));
+          const foundSeatIdx = headers.findIndex(h => h.includes('座') || h.includes('號'));
           if (foundClassIdx !== -1) classIdx = foundClassIdx;
           if (foundNameIdx !== -1) nameIdx = foundNameIdx;
+          if (foundSeatIdx !== -1) seatIdx = foundSeatIdx;
         }
 
         for (let i = 1; i < jsonData.length; i++) {
@@ -314,9 +312,11 @@ export default function App() {
           if (!row || row.length === 0) continue;
           const className = row[classIdx] ? String(row[classIdx]).trim() : '';
           const studentName = row[nameIdx] ? String(row[nameIdx]).trim() : '';
+          const seatNo = seatIdx !== -1 && row[seatIdx] ? String(row[seatIdx]).trim() : '';
+
           if (className && studentName) {
             if (!newClassesMap.has(className)) newClassesMap.set(className, { id: className, name: className, students: [] });
-            newClassesMap.get(className).students.push(studentName);
+            newClassesMap.get(className).students.push({ seat: seatNo, name: studentName });
           }
         }
         const updatedClasses = Array.from(newClassesMap.values());
@@ -336,14 +336,39 @@ export default function App() {
     if (!importText.trim()) return;
     try {
       const newClassesMap = new Map();
-      importText.split('\n').forEach(line => {
-        const parts = line.split('\t').map(p => p.trim()).filter(Boolean);
-        if (parts.length >= 2) {
-          const [className, studentName] = parts;
+      const lines = importText.split('\n').filter(line => line.trim());
+      
+      let startLine = 0;
+      let classIdx = 0, seatIdx = 1, nameIdx = 2; // 預設對應：班級, 座號, 姓名
+
+      // 檢查第一行是否為標題
+      const firstLineParts = lines[0].split('\t').map(p => p.trim());
+      if (firstLineParts.some(h => h.includes('姓名') || h.includes('班級') || h.includes('Name'))) {
+        startLine = 1;
+        const fClass = firstLineParts.findIndex(h => h.includes('班') || h.includes('Class'));
+        const fSeat = firstLineParts.findIndex(h => h.includes('座') || h.includes('號'));
+        const fName = firstLineParts.findIndex(h => h.includes('名') || h.includes('Name'));
+        if (fClass !== -1) classIdx = fClass;
+        if (fSeat !== -1) seatIdx = fSeat;
+        if (fName !== -1) nameIdx = fName;
+      } else {
+        // 沒有標題的話，根據欄位數量推測
+        if (firstLineParts.length === 2) { classIdx = 0; seatIdx = -1; nameIdx = 1; }
+      }
+
+      for (let i = startLine; i < lines.length; i++) {
+        const parts = lines[i].split('\t').map(p => p.trim());
+        if (parts.length < 2) continue;
+        const className = parts[classIdx];
+        const studentName = parts[nameIdx];
+        const seatNo = seatIdx !== -1 && parts[seatIdx] ? parts[seatIdx] : '';
+
+        if (className && studentName) {
           if (!newClassesMap.has(className)) newClassesMap.set(className, { id: className, name: className, students: [] });
-          newClassesMap.get(className).students.push(studentName);
+          newClassesMap.get(className).students.push({ seat: seatNo, name: studentName });
         }
-      });
+      }
+      
       const updatedClasses = Array.from(newClassesMap.values());
       if (updatedClasses.length > 0) {
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'classes'), { list: updatedClasses });
@@ -430,12 +455,16 @@ export default function App() {
                 ) : (
                   <div>
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
-                      {classes.find(c => c.id === selectedClass)?.students.map((student, idx) => {
-                        const isAbsent = selectedStudents.includes(student);
+                      {classes.find(c => c.id === selectedClass)?.students.map((studentObj, idx) => {
+                        // 兼容舊版純字串資料，以及新版包含座號的物件資料
+                        const studentName = typeof studentObj === 'object' ? studentObj.name : studentObj;
+                        const seatNo = typeof studentObj === 'object' && studentObj.seat ? studentObj.seat : (idx + 1);
+                        const isAbsent = selectedStudents.includes(studentName);
+                        
                         return (
-                          <button key={idx} onClick={() => toggleStudent(student)} className={`py-3 px-2 rounded-lg font-medium text-sm sm:text-base transition-all transform active:scale-95 flex flex-col items-center justify-center gap-1 ${isAbsent ? 'bg-red-500 text-white shadow-md shadow-red-200 border-transparent' : 'bg-white text-slate-700 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50'}`}>
-                            <span>{idx + 1}號</span>
-                            <span className={isAbsent ? 'font-bold' : ''}>{student}</span>
+                          <button key={idx} onClick={() => toggleStudent(studentName)} className={`py-3 px-2 rounded-lg font-medium text-sm sm:text-base transition-all transform active:scale-95 flex flex-col items-center justify-center gap-1 ${isAbsent ? 'bg-red-500 text-white shadow-md shadow-red-200 border-transparent' : 'bg-white text-slate-700 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50'}`}>
+                            <span>{seatNo}號</span>
+                            <span className={isAbsent ? 'font-bold' : ''}>{studentName}</span>
                           </button>
                         );
                       })}
@@ -574,7 +603,7 @@ export default function App() {
                       </div>
                       <div>
                         <h3 className="text-sm font-bold text-slate-700 mb-2">複製貼上</h3>
-                        <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder="例如：&#10;101班&#9;王小明&#10;101班&#9;陳大華..." className="w-full h-32 p-3 border border-slate-300 rounded-lg text-sm mb-3 focus:outline-none focus:border-indigo-500 bg-slate-50" />
+                        <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder="支援直接從 Excel 複製貼上！&#10;格式範例（支援座號與性別）：&#10;101班&#9;1&#9;王小明&#9;男&#10;101班&#9;2&#9;陳大華&#9;女..." className="w-full h-32 p-3 border border-slate-300 rounded-lg text-sm mb-3 focus:outline-none focus:border-indigo-500 bg-slate-50" />
                         <button onClick={handleImportStudents} className="w-full px-4 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 font-medium flex justify-center items-center gap-2 transition-colors">
                           <FileSpreadsheet size={18} />更新文字名單
                         </button>
