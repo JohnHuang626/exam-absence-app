@@ -239,6 +239,25 @@ export default function App() {
     } catch(e) { showToast('刪除失敗', 'error'); }
   };
 
+  const handleDeleteSingleAbsence = (recordId) => {
+    showModal({
+      title: "警告：刪除單筆紀錄",
+      message: "確定要刪除這筆缺考紀錄嗎？此動作無法復原。",
+      isDanger: true,
+      confirmText: "確認刪除",
+      onConfirm: async () => {
+        closeModal();
+        try {
+          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'absences', recordId));
+          showToast('該筆紀錄已刪除');
+        } catch (e) {
+          showToast('刪除失敗，請重試', 'error');
+        }
+      },
+      onCancel: closeModal
+    });
+  };
+
   const handleClearAllAbsences = () => {
     if (absences.length === 0) return showToast('目前沒有任何紀錄', 'error');
     showModal({
@@ -531,6 +550,7 @@ export default function App() {
                             <th className="p-4 font-semibold border-b">班級</th>
                             <th className="p-4 font-semibold border-b">科目</th>
                             <th className="p-4 font-semibold border-b">狀態 / 缺考名單</th>
+                            <th className="p-4 font-semibold border-b text-center print:hidden">操作</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -550,6 +570,15 @@ export default function App() {
                                     ))}
                                   </div>
                                 )}
+                              </td>
+                              <td className="p-4 text-center print:hidden">
+                                <button 
+                                  onClick={() => handleDeleteSingleAbsence(record.id)} 
+                                  className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors inline-flex items-center justify-center"
+                                  title="刪除此紀錄"
+                                >
+                                  <Trash2 size={18} />
+                                </button>
                               </td>
                             </tr>
                           ))}
