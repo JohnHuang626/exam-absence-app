@@ -533,12 +533,79 @@ export default function App() {
                     </div>
                   </div>
                   
-                  <div className="hidden print:block p-6 text-center">
-                    <h2 className="text-2xl font-bold text-slate-900">缺考紀錄總表</h2>
-                    <p className="text-slate-500 mt-2">列印時間：{new Date().toLocaleString('zh-TW')}</p>
-                  </div>
+                  {/* 新版的列印專用畫面（這區塊只有列印時才會顯示，平時隱藏） */}
+                  {(() => {
+                    if (absences.length === 0) return null;
+                    
+                    // 自動判斷年級
+                    const getGradeStr = (className) => {
+                      if (!className) return '其他';
+                      const firstChar = className.charAt(0);
+                      if (firstChar === '1' || firstChar === '7') return '七年級';
+                      if (firstChar === '2' || firstChar === '8') return '八年級';
+                      if (firstChar === '3' || firstChar === '9') return '九年級';
+                      return '其他';
+                    };
+                    
+                    // 將資料依「年級 -> 科目」分組
+                    const printData = {};
+                    absences.forEach(record => {
+                      const grade = getGradeStr(record.className);
+                      if (!printData[grade]) printData[grade] = {};
+                      if (!printData[grade][record.subject]) printData[grade][record.subject] = [];
+                      printData[grade][record.subject].push(record);
+                    });
+                    
+                    // 排序年級顯示順序
+                    const gradeOrder = ['七年級', '八年級', '九年級', '其他'];
+                    const sortedGrades = Object.keys(printData).sort((a, b) => {
+                      const idxA = gradeOrder.indexOf(a);
+                      const idxB = gradeOrder.indexOf(b);
+                      return (idxA !== -1 ? idxA : 99) - (idxB !== -1 ? idxB : 99);
+                    });
 
-                  <div className="overflow-x-auto print:overflow-visible">
+                    return (
+                      <div className="hidden print:block w-full text-black bg-white">
+                        {sortedGrades.map((grade, index) => (
+                          <div key={grade} className={index !== sortedGrades.length - 1 ? "break-after-page" : ""}>
+                            <div className="text-center mb-8 pt-4">
+                              <h2 className="text-3xl font-bold">{grade} 缺考紀錄總表</h2>
+                              <p className="text-gray-500 mt-2">列印時間：{new Date().toLocaleString('zh-TW')}</p>
+                            </div>
+                            
+                            {Object.keys(printData[grade]).map(subject => (
+                              <div key={subject} className="mb-8 break-inside-avoid">
+                                <h3 className="text-xl font-bold mb-2 pl-3 border-l-4 border-black">{subject}</h3>
+                                <table className="w-full text-left border-collapse border-2 border-black">
+                                  <thead>
+                                    <tr className="bg-gray-100">
+                                      <th className="p-3 border border-black font-bold w-1/5 text-center">班級</th>
+                                      <th className="p-3 border border-black font-bold w-3/5">缺考名單</th>
+                                      <th className="p-3 border border-black font-bold w-1/5 text-center">監考老師</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {printData[grade][subject].map((record, i) => (
+                                      <tr key={i}>
+                                        <td className="p-3 border border-black font-bold text-lg text-center">{record.className}</td>
+                                        <td className="p-3 border border-black text-lg">
+                                          {record.students.length === 0 ? '全勤' : record.students.join('、')}
+                                        </td>
+                                        <td className="p-3 border border-black text-center">{record.teacher || '未填寫'}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  {/* 螢幕專用的一般總表（這區塊列印時會被隱藏） */}
+                  <div className="overflow-x-auto print:hidden">
                     {absences.length === 0 ? (
                       <div className="text-center py-12 text-slate-500">目前沒有任何缺考紀錄</div>
                     ) : (
