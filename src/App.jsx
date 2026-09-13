@@ -692,7 +692,9 @@ export default function App() {
                                 ) : (
                                   <div className="flex flex-wrap gap-1.5">
                                     {record.students.map((student, i) => (
-                                      <span key={i} className="inline-flex items-center px-2.5 py-1 rounded-md text-sm font-medium bg-red-50 text-red-700 border border-red-100">{student}</span>
+                                      <span key={i} className="inline-flex items-center px-2.5 py-1 rounded-md text-sm font-medium bg-red-50 text-red-700 border border-red-100">
+                                        {getStudentWithSeat(record.className, student)}
+                                      </span>
                                     ))}
                                   </div>
                                 )}
