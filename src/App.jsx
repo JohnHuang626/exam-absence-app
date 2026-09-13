@@ -161,9 +161,25 @@ export default function App() {
   };
 
   const [teacherName, setTeacherName] = useState('');
+  const [recentTeachers, setRecentTeachers] = useState([]); // 新增：用來儲存近期使用的老師姓名
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedStudents, setSelectedStudents] = useState([]);
+
+  // 新增：系統載入時，讀取瀏覽器記憶的老師姓名
+  useEffect(() => {
+    const saved = localStorage.getItem('exam_absence_recent_teachers');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setRecentTeachers(parsed);
+        // 如果有紀錄，自動幫老師填入最後一次使用的名字，省去點擊的麻煩
+        if (parsed.length > 0) {
+          setTeacherName(parsed[0]);
+        }
+      } catch (e) {}
+    }
+  }, []);
 
   const handleClassChange = (e) => {
     setSelectedClass(e.target.value);
@@ -194,21 +210,31 @@ export default function App() {
 
   const saveAbsenceData = async (studentsList) => {
     if (!user) return showToast('資料庫連線中，請稍後...', 'error');
+    
+    const currentTeacher = teacherName.trim();
     const className = classes.find(c => c.id === selectedClass)?.name;
     const newRecord = {
       timestamp: new Date().toLocaleString('zh-TW', { hour12: false }),
       timestampMs: Date.now(),
-      teacher: teacherName.trim(),
+      teacher: currentTeacher,
       className: className,
       subject: selectedSubject,
       students: studentsList,
     };
 
+    // 新增：記住這位老師的名字到瀏覽器中 (最多記憶最近 5 位)
+    if (currentTeacher) {
+      const updatedTeachers = [currentTeacher, ...recentTeachers.filter(t => t !== currentTeacher)].slice(0, 5);
+      setRecentTeachers(updatedTeachers);
+      localStorage.setItem('exam_absence_recent_teachers', JSON.stringify(updatedTeachers));
+    }
+
     try {
       const absencesRef = collection(db, 'artifacts', appId, 'public', 'data', 'absences');
       await addDoc(absencesRef, newRecord);
       showToast('缺考名單已成功送出！');
-      setTeacherName('');
+      
+      // 優化：送出後不清除老師姓名，方便同一位老師繼續登記下一個班級
       setSelectedClass('');
       setSelectedSubject('');
       setSelectedStudents([]);
@@ -462,7 +488,20 @@ export default function App() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">監考老師</label>
-                    <input type="text" value={teacherName} onChange={(e) => setTeacherName(e.target.value)} placeholder="請輸入姓名" className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all bg-slate-50 hover:bg-white" />
+                    <input 
+                      type="text" 
+                      value={teacherName} 
+                      onChange={(e) => setTeacherName(e.target.value)} 
+                      placeholder="請輸入姓名" 
+                      list="recent-teachers-list"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all bg-slate-50 hover:bg-white" 
+                    />
+                    {/* 新增：提供歷史輸入的下拉選單 */}
+                    <datalist id="recent-teachers-list">
+                      {recentTeachers.map((t, idx) => (
+                        <option key={idx} value={t} />
+                      ))}
+                    </datalist>
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">考試班級</label>
