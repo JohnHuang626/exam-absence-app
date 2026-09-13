@@ -29,8 +29,8 @@ const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'exam-absence-app';
 
 const defaultClassesData = [
-  { id: '101', name: '101班', students: ['王大明', '陳小華', '林依依', '張志豪', '李佳玲'] },
-  { id: '102', name: '102班', students: ['黃品睿', '邱子涵', '徐宇廷', '鄭珮琪', '莊凱文'] },
+  { id: '101', name: '101班', students: [{seat: '1', name: '王大明'}, {seat: '2', name: '陳小華'}] },
+  { id: '102', name: '102班', students: [{seat: '1', name: '黃品睿'}, {seat: '2', name: '邱子涵'}] },
 ];
 const defaultSubjectsData = ['國文', '作文', '英文', '英聽', '數學', '自然', '地理', '歷史', '公民'];
 
@@ -148,6 +148,22 @@ export default function App() {
     return () => document.body.contains(script) && document.body.removeChild(script);
   }, []);
 
+  // 輔助函式：根據班級與學生姓名，自動加上座號
+  const getStudentWithSeat = (className, studentName) => {
+    if (!className || !studentName) return studentName;
+    const classData = classes.find(c => c.name === className || c.id === className);
+    if (classData && classData.students) {
+      // 找出該學生物件 (支援純字串或物件格式)
+      const studentObj = classData.students.find(s => 
+        (typeof s === 'object' ? s.name === studentName : s === studentName)
+      );
+      if (studentObj && typeof studentObj === 'object' && studentObj.seat) {
+        return `${studentObj.seat}號 ${studentName}`;
+      }
+    }
+    return studentName;
+  };
+
   const handlePasswordSubmit = (e) => {
     e.preventDefault();
     if (passwordInput === 'test123') {
@@ -161,19 +177,18 @@ export default function App() {
   };
 
   const [teacherName, setTeacherName] = useState('');
-  const [recentTeachers, setRecentTeachers] = useState([]); // 新增：用來儲存近期使用的老師姓名
+  const [recentTeachers, setRecentTeachers] = useState([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedStudents, setSelectedStudents] = useState([]);
 
-  // 新增：系統載入時，讀取瀏覽器記憶的老師姓名
+  // 系統載入時，讀取瀏覽器記憶的老師姓名
   useEffect(() => {
     const saved = localStorage.getItem('exam_absence_recent_teachers');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         setRecentTeachers(parsed);
-        // 如果有紀錄，自動幫老師填入最後一次使用的名字，省去點擊的麻煩
         if (parsed.length > 0) {
           setTeacherName(parsed[0]);
         }
@@ -222,7 +237,7 @@ export default function App() {
       students: studentsList,
     };
 
-    // 新增：記住這位老師的名字到瀏覽器中 (最多記憶最近 5 位)
+    // 記住這位老師的名字到瀏覽器中 (最多記憶最近 5 位)
     if (currentTeacher) {
       const updatedTeachers = [currentTeacher, ...recentTeachers.filter(t => t !== currentTeacher)].slice(0, 5);
       setRecentTeachers(updatedTeachers);
@@ -234,7 +249,7 @@ export default function App() {
       await addDoc(absencesRef, newRecord);
       showToast('缺考名單已成功送出！');
       
-      // 優化：送出後不清除老師姓名，方便同一位老師繼續登記下一個班級
+      // 送出後不清除老師姓名，方便同一位老師繼續登記下一個班級
       setSelectedClass('');
       setSelectedSubject('');
       setSelectedStudents([]);
@@ -313,7 +328,9 @@ export default function App() {
     const BOM = '\uFEFF';
     const headers = ['時間', '監考老師', '班級', '科目', '狀態/缺考名單'];
     const csvRows = absences.map(record => {
-      const status = record.students.length === 0 ? '全勤' : record.students.join('、');
+      // 在匯出時也轉換為帶有座號的名單
+      const studentsWithSeats = record.students.map(s => getStudentWithSeat(record.className, s));
+      const status = studentsWithSeats.length === 0 ? '全勤' : studentsWithSeats.join('、');
       const teacher = record.teacher || '未填寫';
       return `"${record.timestamp}","${teacher}","${record.className}","${record.subject}","${status}"`;
     });
@@ -341,23 +358,29 @@ export default function App() {
       try {
         const data = new Uint8Array(evt.target.result);
         const wb = window.XLSX.read(data, { type: 'array' });
-        let classIdx = 0, nameIdx = 1, seatIdx = -1;
+        const firstSheetName = wb.SheetNames[0];
+        const worksheet = wb.Sheets[firstSheetName];
+        const jsonData = window.XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        const newClassesMap = new Map();
+        let classIdx = 0, seatIdx = 1, nameIdx = 2; 
+
         if (jsonData.length > 0) {
           const headers = jsonData[0].map(h => String(h || '').trim());
           const foundClassIdx = headers.findIndex(h => h.includes('班級') || h.includes('班') || h.includes('Class'));
-          const foundNameIdx = headers.findIndex(h => h.includes('姓名') || h.includes('名') || h.includes('Name'));
           const foundSeatIdx = headers.findIndex(h => h.includes('座') || h.includes('號'));
+          const foundNameIdx = headers.findIndex(h => h.includes('姓名') || h.includes('名') || h.includes('Name'));
           if (foundClassIdx !== -1) classIdx = foundClassIdx;
-          if (foundNameIdx !== -1) nameIdx = foundNameIdx;
           if (foundSeatIdx !== -1) seatIdx = foundSeatIdx;
+          if (foundNameIdx !== -1) nameIdx = foundNameIdx;
         }
 
         for (let i = 1; i < jsonData.length; i++) {
           const row = jsonData[i];
           if (!row || row.length === 0) continue;
           const className = row[classIdx] ? String(row[classIdx]).trim() : '';
+          const seatNo = row[seatIdx] ? String(row[seatIdx]).trim() : '';
           const studentName = row[nameIdx] ? String(row[nameIdx]).trim() : '';
-          const seatNo = seatIdx !== -1 && row[seatIdx] ? String(row[seatIdx]).trim() : '';
 
           if (className && studentName) {
             if (!newClassesMap.has(className)) newClassesMap.set(className, { id: className, name: className, students: [] });
@@ -399,14 +422,15 @@ export default function App() {
       } else {
         // 沒有標題的話，根據欄位數量推測
         if (firstLineParts.length === 2) { classIdx = 0; seatIdx = -1; nameIdx = 1; }
+        else if (firstLineParts.length >= 3) { classIdx = 0; seatIdx = 1; nameIdx = 2; }
       }
 
       for (let i = startLine; i < lines.length; i++) {
         const parts = lines[i].split('\t').map(p => p.trim());
         if (parts.length < 2) continue;
         const className = parts[classIdx];
-        const studentName = parts[nameIdx];
         const seatNo = seatIdx !== -1 && parts[seatIdx] ? parts[seatIdx] : '';
+        const studentName = parts[nameIdx];
 
         if (className && studentName) {
           if (!newClassesMap.has(className)) newClassesMap.set(className, { id: className, name: className, students: [] });
@@ -473,7 +497,7 @@ export default function App() {
 
       <main className="max-w-5xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
         
-        {/* 教師登記介面 */}
+        {}
         {activeTab === 'teacher' && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             {!user && <div className="mb-4 p-3 bg-amber-100 text-amber-800 rounded-lg text-sm flex items-center gap-2"><AlertCircle size={16}/>正在連線到資料庫...無法儲存請稍候。</div>}
@@ -496,7 +520,6 @@ export default function App() {
                       list="recent-teachers-list"
                       className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all bg-slate-50 hover:bg-white" 
                     />
-                    {/* 新增：提供歷史輸入的下拉選單 */}
                     <datalist id="recent-teachers-list">
                       {recentTeachers.map((t, idx) => (
                         <option key={idx} value={t} />
@@ -534,7 +557,6 @@ export default function App() {
                   <div>
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
                       {classes.find(c => c.id === selectedClass)?.students.map((studentObj, idx) => {
-                        // 兼容舊版純字串資料，以及新版包含座號的物件資料
                         const studentName = typeof studentObj === 'object' ? studentObj.name : studentObj;
                         const seatNo = typeof studentObj === 'object' && studentObj.seat ? studentObj.seat : (idx + 1);
                         const isAbsent = selectedStudents.includes(studentName);
@@ -561,7 +583,7 @@ export default function App() {
           </div>
         )}
 
-        {/* 系統設定介面 */}
+        {}
         {activeTab === 'admin' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {!isAdminAuthenticated ? (
@@ -592,11 +614,10 @@ export default function App() {
                     </div>
                   </div>
                   
-                  {/* 新版的列印專用畫面（這區塊只有列印時才會顯示，平時隱藏） */}
+                  {}
                   {(() => {
                     if (absences.length === 0) return null;
                     
-                    // 自動判斷年級
                     const getGradeStr = (className) => {
                       if (!className) return '其他';
                       const firstChar = className.charAt(0);
@@ -606,7 +627,6 @@ export default function App() {
                       return '其他';
                     };
                     
-                    // 將資料依「年級 -> 科目」分組
                     const printData = {};
                     absences.forEach(record => {
                       const grade = getGradeStr(record.className);
@@ -615,7 +635,6 @@ export default function App() {
                       printData[grade][record.subject].push(record);
                     });
                     
-                    // 排序年級顯示順序
                     const gradeOrder = ['七年級', '八年級', '九年級', '其他'];
                     const sortedGrades = Object.keys(printData).sort((a, b) => {
                       const idxA = gradeOrder.indexOf(a);
@@ -648,7 +667,9 @@ export default function App() {
                                       <tr key={i}>
                                         <td className="p-3 border border-black font-bold text-lg text-center">{record.className}</td>
                                         <td className="p-3 border border-black text-lg">
-                                          {record.students.length === 0 ? '全勤' : record.students.join('、')}
+                                          {record.students.length === 0 
+                                            ? '全勤' 
+                                            : record.students.map(s => getStudentWithSeat(record.className, s)).join('、')}
                                         </td>
                                         <td className="p-3 border border-black text-center">{record.teacher || '未填寫'}</td>
                                       </tr>
@@ -663,7 +684,7 @@ export default function App() {
                     );
                   })()}
 
-                  {/* 螢幕專用的一般總表（這區塊列印時會被隱藏） */}
+                  {}
                   <div className="overflow-x-auto print:hidden">
                     {absences.length === 0 ? (
                       <div className="text-center py-12 text-slate-500">目前沒有任何缺考紀錄</div>
@@ -716,8 +737,8 @@ export default function App() {
                   </div>
                 </div>
 
+                {}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:hidden">
-                  {/* 科目設定 */}
                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                     <div className="p-6 border-b border-slate-100">
                       <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Settings className="text-indigo-600" />考試科目設定</h2>
@@ -738,7 +759,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* 名單管理 */}
                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                     <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                       <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Users className="text-indigo-600" />班級名單更新</h2>
