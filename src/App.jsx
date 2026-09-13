@@ -228,13 +228,17 @@ export default function App() {
     
     const currentTeacher = teacherName.trim();
     const className = classes.find(c => c.id === selectedClass)?.name;
+    
+    // 關鍵修改：在存入資料庫前，直接將名單加上座號，永久保存！
+    const formattedStudents = studentsList.map(studentName => getStudentWithSeat(className, studentName));
+
     const newRecord = {
       timestamp: new Date().toLocaleString('zh-TW', { hour12: false }),
       timestampMs: Date.now(),
       teacher: currentTeacher,
       className: className,
       subject: selectedSubject,
-      students: studentsList,
+      students: formattedStudents,
     };
 
     // 記住這位老師的名字到瀏覽器中 (最多記憶最近 5 位)
