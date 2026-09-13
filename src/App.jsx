@@ -397,6 +397,26 @@ export default function App() {
     } catch (e) { showToast('處理資料時發生錯誤', 'error'); }
   };
 
+  const handleClearAllClasses = () => {
+    if (classes.length === 0) return showToast('目前沒有任何班級資料', 'error');
+    showModal({
+      title: "警告：清空所有班級名單",
+      message: "確定要刪除所有的班級與學生名單嗎？此動作無法復原，通常在學期結束更換新名單時使用。",
+      isDanger: true,
+      confirmText: "確認清空",
+      onConfirm: async () => {
+        closeModal();
+        try {
+          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'classes'), { list: [] });
+          showToast('班級與學生名單已全部清空');
+        } catch (e) {
+          showToast('清空失敗，請重試', 'error');
+        }
+      },
+      onCancel: closeModal
+    });
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
@@ -679,8 +699,11 @@ export default function App() {
 
                   {/* 名單管理 */}
                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="p-6 border-b border-slate-100">
+                    <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                       <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Users className="text-indigo-600" />班級名單更新</h2>
+                      <button onClick={handleClearAllClasses} className="p-2 text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1 text-sm transition-colors" title="學期結束時，清空所有班級與學生資料">
+                        <Trash2 size={16}/> 清空名單
+                      </button>
                     </div>
                     <div className="p-6 space-y-6">
                       <div>
