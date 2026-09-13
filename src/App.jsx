@@ -151,14 +151,24 @@ export default function App() {
   // 輔助函式：根據班級與學生姓名，自動加上座號
   const getStudentWithSeat = (className, studentName) => {
     if (!className || !studentName) return studentName;
+    
+    // 防呆：如果 Firebase 中已經儲存了帶有「號」的舊資料，直接回傳避免重複
+    if (typeof studentName === 'string' && studentName.includes('號')) {
+      return studentName;
+    }
+
     const classData = classes.find(c => c.name === className || c.id === className);
     if (classData && classData.students) {
-      // 找出該學生物件 (支援純字串或物件格式)
-      const studentObj = classData.students.find(s => 
+      // 改用 findIndex，這樣若名單缺少座號，還能用順序自動補上
+      const studentIdx = classData.students.findIndex(s => 
         (typeof s === 'object' ? s.name === studentName : s === studentName)
       );
-      if (studentObj && typeof studentObj === 'object' && studentObj.seat) {
-        return `${studentObj.seat}號 ${studentName}`;
+
+      if (studentIdx !== -1) {
+        const studentObj = classData.students[studentIdx];
+        // 優先使用物件內的 seat，若為空或不存在，則強制使用 (陣列索引 + 1) 當作座號
+        const seatNo = (typeof studentObj === 'object' && studentObj.seat) ? studentObj.seat : (studentIdx + 1);
+        return `${seatNo}號 ${studentName}`;
       }
     }
     return studentName;
